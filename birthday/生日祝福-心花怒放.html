@@ -1,0 +1,377 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>canvas应用、生日祝福</title>
+		<style>
+			html,body{
+				margin:0px;
+				width:100%;
+				height:100%;
+				overflow:hidden;
+				background:#000;
+			}
+
+			#canvas{
+				width:100%;
+				height:100%;
+			}
+		</style>
+	</head>
+	<body>
+		<canvas id="canvas"></canvas>
+		<script>
+			function initVars(){
+				pi=Math.PI;
+				canvas = document.getElementById("canvas");
+				ctx=canvas.getContext("2d");
+				canvas.width=canvas.clientWidth;
+				canvas.height=canvas.clientHeight;
+				cx=canvas.width/2;
+				cy=canvas.height/2;
+				playerZ=-25;//运动z轴
+				playerX=playerY=playerVX=playerVY=playerVZ=pitch=yaw=pitchV=yawV=0;//pitch顶点，yaw偏航，pitchV到达顶点速度
+				scale=600;
+				seedTimer=0;
+				seedInterval=5,//种子生成间隔时间
+				seedLife=160;//种子运动时间
+				gravity=.02;//重力系数
+				textColor = ["#f84","#84f","#8ff","#fff","#4f8","#e571d5","#44f","pink"];//存放文字颜色
+				petalColor = [["#9e1f63","#9e1f63","#bcbec0"],["#b97a97","#b97a97","#b97a97"]];  //存放花瓣颜色
+				textObj = [];//本次对象
+				textContent = "生日快乐！";//存放文字内容
+				seeds=new Array();//存放种子
+				sparkPics=new Array();//sparkPics存放烟花图片数组
+				for(i=1;i<=10;++i){
+					sparkPic=new Image();
+					sparkPic.src="img/spark"+i+".png";
+					sparkPics.push(sparkPic);
+				}
+				//sparks火花
+				sparks=new Array();
+				pow1=new Audio("audio/pow1.ogg");
+				pow2=new Audio("audio/pow2.ogg");
+				pow3=new Audio("audio/pow3.ogg");
+				pow4=new Audio("audio/pow4.ogg");
+				frames = 0;
+			}
+			//种子对象
+			function spawnSeed(){
+				seed=new Object();
+				seed.x=-50+Math.random()*100;
+				seed.y=25;
+				seed.z=-50+Math.random()*100;
+				seed.vx=.1-Math.random()*.2;
+				seed.vy=-1.5;//*(1+Math.random()/2);
+				seed.vz=.1-Math.random()*.2;
+				seed.angle = 30;
+				seed.color = textColor[~~(textColor.length*Math.random())];
+				seed.petalColor = petalColor[~~(petalColor.length*Math.random())];
+				seed.born=frames;//生成时间
+				seeds.push(seed);
+			}
+			
+			//到达爆炸点后，生成火花图片和声音
+			function splode(x,y,z,color){
+				t=5+parseInt(Math.random()*150);
+				sparkV=1+Math.random()*2.5;
+				type=parseInt(Math.random()*3);
+				switch(type){
+					case 0:
+						pic1=parseInt(Math.random()*10);
+						break;
+					case 1:
+						pic1=parseInt(Math.random()*10);
+						do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
+						break;
+					case 2:
+						pic1=parseInt(Math.random()*10);
+						do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
+						do{ pic3=parseInt(Math.random()*10); }while(pic3==pic1 || pic3==pic2);
+						break;
+				}
+				for(m=1;m<t;++m){
+					spark=new Object();
+					spark.x=x; spark.y=y; spark.z=z;
+					p1=pi*2*Math.random();
+					p2=pi*Math.random();
+					v=sparkV*(1+Math.random()/6)
+					spark.vx=Math.sin(p1)*Math.sin(p2)*v;
+					spark.vz=Math.cos(p1)*Math.sin(p2)*v;
+					spark.vy=Math.cos(p2)*v;
+					switch(type){
+						case 0: spark.img=sparkPics[pic1]; break;
+						case 1:
+							spark.img=sparkPics[parseInt(Math.random()*2)?pic1:pic2];
+							break;
+						case 2:
+							switch(parseInt(Math.random()*3)){
+								case 0: spark.img=sparkPics[pic1]; break;
+								case 1: spark.img=sparkPics[pic2]; break;
+								case 2: spark.img=sparkPics[pic3]; break;
+							}
+							break;
+					}
+					spark.radius=25+Math.random()*50;
+					spark.alpha=1;
+					spark.trail=new Array();
+					sparks.push(spark);
+				}
+				switch(parseInt(Math.random()*4)){
+					case 0:	pow=pow1; break;
+					case 1:	pow=pow2; break;
+					case 2:	pow=pow3; break;
+					case 3:	pow=pow4; break;
+				}
+				d=Math.sqrt((x-playerX)*(x-playerX)+(y-playerY)*(y-playerY)+(z-playerZ)*(z-playerZ));
+				pow.volume=1.5/(1+d/10);
+				pow.play();
+				//c:放大倍数，s:字体初始大小，color:字体颜色,p:爆炸点
+				textObj.push({p:rasterizePoint(x,y,z),c:Math.random(),s:8,o:1,color:color});
+			}
+			//逻辑控制
+			function doLogic(){
+				if(seedTimer<frames){
+					seedTimer=frames+seedInterval*Math.random()*10;
+					spawnSeed();
+				}
+				for(i=0;i<seeds.length;++i){
+					seeds[i].angle+=2;
+					if(seeds[i].angle > 170){//莲花是否绽放
+						seeds[i].vy+=gravity;
+						seeds[i].x+=seeds[i].vx;
+						seeds[i].y+=seeds[i].vy;
+						seeds[i].z+=seeds[i].vz;
+						if(frames-seeds[i].born>seedLife){//是否该爆炸了
+							splode(seeds[i].x,seeds[i].y,seeds[i].z,seeds[i].color);
+							seeds.splice(i,1);
+						}
+					}
+				}
+				for(i=0;i<textObj.length;++i){
+					textObj[i].o < 0 && textObj.splice(i,1);
+				}
+				for(i=0;i<sparks.length;++i){
+					if(sparks[i].alpha>0 && sparks[i].radius>5){//火花是否删除
+						sparks[i].alpha-=.01;
+						sparks[i].radius/=1.02;
+						sparks[i].vy+=gravity;
+						point=new Object();
+						point.x=sparks[i].x;
+						point.y=sparks[i].y;
+						point.z=sparks[i].z;
+						if(sparks[i].trail.length){
+							x=sparks[i].trail[sparks[i].trail.length-1].x;
+							y=sparks[i].trail[sparks[i].trail.length-1].y;
+							z=sparks[i].trail[sparks[i].trail.length-1].z;
+							d=((point.x-x)*(point.x-x)+(point.y-y)*(point.y-y)+(point.z-z)*(point.z-z));
+							if(d>9){
+								sparks[i].trail.push(point);
+							}
+						}else{
+							sparks[i].trail.push(point);
+						}
+						if(sparks[i].trail.length>5)sparks[i].trail.splice(0,1);				
+						sparks[i].x+=sparks[i].vx;
+						sparks[i].y+=sparks[i].vy;
+						sparks[i].z+=sparks[i].vz;
+						sparks[i].vx/=1.075;
+						sparks[i].vy/=1.075;
+						sparks[i].vz/=1.075;
+					}else{
+						sparks.splice(i,1);
+					}
+				}
+				p=Math.atan2(playerX,playerZ);
+				d=Math.sqrt(playerX*playerX+playerZ*playerZ);
+				d+=Math.sin(frames/80)/1.25;
+				t=Math.sin(frames/200)/40;
+				playerX=Math.sin(p+t)*d;
+				playerZ=Math.cos(p+t)*d;
+				yaw=pi+p+t;
+			}
+			//返回正确的光栅点的坐标
+			function rasterizePoint(x,y,z){
+				var p,d;
+				x-=playerX;
+				y-=playerY;
+				z-=playerZ;
+				p=Math.atan2(x,z);
+				d=Math.sqrt(x*x+z*z);
+				x=Math.sin(p-yaw)*d;
+				z=Math.cos(p-yaw)*d;
+				p=Math.atan2(y,z);
+				d=Math.sqrt(y*y+z*z);
+				y=Math.sin(p-pitch)*d;
+				z=Math.cos(p-pitch)*d;
+				var rx1=-1000,ry1=1,rx2=1000,ry2=1,rx3=0,ry3=0,rx4=x,ry4=z,uc=(ry4-ry3)*(rx2-rx1)-(rx4-rx3)*(ry2-ry1);
+				if(!uc) return {x:0,y:0,d:-1};
+				var ua=((rx4-rx3)*(ry1-ry3)-(ry4-ry3)*(rx1-rx3))/uc;
+				var ub=((rx2-rx1)*(ry1-ry3)-(ry2-ry1)*(rx1-rx3))/uc;
+				if(!z)z=.000000001;
+				if(ua>0&&ua<1&&ub>0&&ub<1){
+					return {
+						x:cx+(rx1+ua*(rx2-rx1))*scale,
+						y:cy+y/z*scale,
+						d:Math.sqrt(x*x+y*y+z*z)
+					};
+				}else{
+					return {
+						x:cx+(rx1+ua*(rx2-rx1))*scale,
+						y:cy+y/z*scale,
+						d:-1
+					};
+				}
+			}
+
+			//画图
+			function draw(){		
+				ctx.clearRect(0,0,cx*2,cy*2);	
+				ctx.fillStyle="#ff8";	
+				ctx.globalAlpha=1;//透明度
+				for(i=0;i<seeds.length;++i){//对种子操作
+					point=rasterizePoint(seeds[i].x,seeds[i].y,seeds[i].z);//根据到达顶部的位置
+					if(seeds[i].angle > 170){//莲花是否绽放
+						if(point.d!=-1){
+							size=200/(1+point.d);
+							love(point.x-size/2,point.y-size/2,seeds[i].color);
+						}
+					}else{
+						petal(point.x,point.y,seeds[i]);
+					}
+				}
+				for(i=0;i<textObj.length;++i){
+					textObj[i].o -= 0.05;
+					textObj[i].c += 1; 
+					ctx.font="bold "+ textObj[i].c*2 +"px Arial"
+					ctx.fillStyle = textObj[i].color;
+					ctx.fillText(textContent,textObj[i].p.x - textObj[i].c,textObj[i].p.y);
+				}	
+				point1=new Object();
+				for(i=0;i<sparks.length;++i){//对火花图片的操作
+					point=rasterizePoint(sparks[i].x,sparks[i].y,sparks[i].z);
+					if(point.d!=-1){
+						size=sparks[i].radius*200/(1+point.d);
+						if(sparks[i].alpha<0)sparks[i].alpha=0;
+						if(sparks[i].trail.length){
+							point1.x=point.x;
+							point1.y=point.y;
+							switch(sparks[i].img){
+								case sparkPics[0]:ctx.strokeStyle="#f84";break;
+								case sparkPics[1]:ctx.strokeStyle="#84f";break;
+								case sparkPics[2]:ctx.strokeStyle="#8ff";break;
+								case sparkPics[3]:ctx.strokeStyle="#fff";break;
+								case sparkPics[4]:ctx.strokeStyle="#4f8";break;
+								case sparkPics[5]:ctx.strokeStyle="#f44";break;
+								case sparkPics[6]:ctx.strokeStyle="#f84";break;
+								case sparkPics[7]:ctx.strokeStyle="#84f";break;
+								case sparkPics[8]:ctx.strokeStyle="#fff";break;
+								case sparkPics[9]:ctx.strokeStyle="#44f";break;
+							}
+							for(j=sparks[i].trail.length-1;j>=0;--j){
+								point2=rasterizePoint(sparks[i].trail[j].x,sparks[i].trail[j].y,sparks[i].trail[j].z);
+								if(point2.d!=-1){
+									ctx.globalAlpha=j/sparks[i].trail.length*sparks[i].alpha/2;
+									ctx.beginPath();
+									ctx.moveTo(point1.x,point1.y);
+									ctx.lineWidth=1+sparks[i].radius*10/(sparks[i].trail.length-j)/(1+point2.d);
+									ctx.lineTo(point2.x,point2.y);
+									ctx.stroke();
+									point1.x=point2.x;
+									point1.y=point2.y;
+								}
+							}
+						}
+						ctx.globalAlpha=sparks[i].alpha;
+						ctx.drawImage(sparks[i].img,point.x-size/2,point.y-size/2,size,size);
+					}
+				}
+			}
+			//爱心
+			function love(currentX,currenty,color){
+				var radian = 0,   //设置初始弧度
+					radian_add = Math.PI/180;  //设置弧度增量
+				ctx.beginPath();  //开始绘图
+				ctx.moveTo(currentX,currenty); //移动绘图游标至原点
+				while(radian <= (Math.PI*2)){  //每增加一次弧度，绘制一条线
+					radian += radian_add;
+					X = getX(radian);
+					Y = getY(radian);
+					ctx.lineTo(X + currentX,Y + currenty - 80);
+				}
+				ctx.fillStyle = "pink"; 
+				ctx.fill();
+			}
+			//形成莲花
+			function petal(x,y,seed){
+				var radian = Math.PI / 180, 
+					sumAngle = seed.angle, //花瓣占总的角度
+					num = 10, //花瓣总个数
+					f = sumAngle / (num - 1) * radian, //每个花瓣之间的角度
+					petalH = 160, //花瓣高度
+					r2 = Math.sqrt(12800); //控制贝塞尔曲线控制点的位置,公式为:Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));这里计算过程为:Math.sqrt(80*80 + 80*80)
+				for(var i =0;i< num;i++){
+					ctx.save();
+					ctx.beginPath();
+					ctx.globalAlpha=0.5;	
+					ctx.moveTo(x, y);	
+					ctx.lineStyle = "pink";
+					/*计算二次贝塞尔曲线的结束点*/
+					var currentAngle = f * i -sumAngle/2*radian;
+					var x2 = x + Math.sin(currentAngle) * petalH;
+					var y2 = y - Math.cos( currentAngle) * petalH;
+					/*计算二次贝塞尔曲线的第一个控制点*/
+					var xP = x + Math.sin( currentAngle - 45*radian) * r2;
+					var yP = y - Math.cos( currentAngle - 45*radian) * r2;
+					ctx.fillStyle = createLinearGradient(x,y,xP,yP,seed.petalColor);;
+					ctx.quadraticCurveTo(xP, yP, x2, y2);
+					ctx.moveTo(x, y);
+					/*计算二次贝塞尔曲线的第二个控制点*/
+					xP = x + Math.sin( currentAngle + 45*radian) * r2;
+					yP = y - Math.cos( currentAngle + 45*radian) * r2;
+					ctx.fillStyle = createLinearGradient(x,y,xP,yP,seed.petalColor);
+					ctx.quadraticCurveTo(xP, yP, x2, y2);
+					ctx.stroke();
+					ctx.fill();
+					ctx.restore();
+				}
+			}		
+
+			function createLinearGradient(x,y,xP,yP,colorArr){
+				var grd=ctx.createLinearGradient(x,y,xP,yP);
+				grd.addColorStop(0,colorArr[0]);		
+				grd.addColorStop(0.7,colorArr[1]);
+				grd.addColorStop(0.92,colorArr[2]);
+				return grd;
+			}
+			function getX(t){  //获取心型线的X坐标
+				return 1*(16*Math.pow(Math.sin(t),3))
+			}
+
+			function getY(t){  //获取心型线的Y坐标
+				return -1*(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))
+			}
+			//窗口变动事件
+			window.addEventListener("resize",()=>{
+				canvas.width=canvas.clientWidth;
+				canvas.height=canvas.clientHeight;
+				cx=canvas.width/2;
+				cy=canvas.height/2;
+			});
+			//不停运动重构
+			function frame(){
+				if(frames>200000){
+					seedTimer=0;
+					frames=0;
+				}
+				frames++;
+				draw();
+				doLogic();
+				requestAnimationFrame(frame);
+			}
+		
+			initVars();
+			frame();
+		</script>
+	</body>
+</html>
